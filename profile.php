@@ -193,14 +193,7 @@ $theme = getUserTheme($pdo);
                 Statistics
             </h5>
             <div class="row g-3">
-                <div class="col-6 col-md-3">
-                    <div class="stat-card">
-                        <div>
-                            <div class="stat-value"><?= number_format($user['total_score']) ?></div>
-                            <div class="stat-label">Total Score</div>
-                        </div>
-                    </div>
-                </div>
+
                 <div class="col-6 col-md-3">
                     <div class="stat-card">
                         <div>

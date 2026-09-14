@@ -223,6 +223,7 @@ if ($setId) {
     let isDirty = false;
     let targetUrl = '';
     let collapsedStates = {}; // track collapsed state per problem index
+    let tcCollapsedStates = {}; // track collapsed state for test cases
 
     function markDirty() {
         isDirty = true;
@@ -320,6 +321,33 @@ if ($setId) {
         problems.forEach((_, idx) => {
             collapsedStates[idx] = anyExpanded;
         });
+        renderProblems();
+    }
+
+    function toggleTestCase(probIdx, tcIdx) {
+        const key = probIdx + '-' + tcIdx;
+        tcCollapsedStates[key] = !tcCollapsedStates[key];
+        const body = document.getElementById(`tc-body-${probIdx}-${tcIdx}`);
+        const icon = document.getElementById(`tc-collapse-icon-${probIdx}-${tcIdx}`);
+        if (body) body.classList.toggle('collapsed', tcCollapsedStates[key]);
+        if (icon) icon.classList.toggle('collapsed', tcCollapsedStates[key]);
+    }
+
+    function moveTestCase(probIdx, tcIdx, dir) {
+        const tcs = problems[probIdx].testcases;
+        if (tcIdx + dir < 0 || tcIdx + dir >= tcs.length) return;
+        
+        const temp = tcs[tcIdx];
+        tcs[tcIdx] = tcs[tcIdx + dir];
+        tcs[tcIdx + dir] = temp;
+        
+        const keyA = probIdx + '-' + tcIdx;
+        const keyB = probIdx + '-' + (tcIdx + dir);
+        const tempC = tcCollapsedStates[keyA];
+        tcCollapsedStates[keyA] = tcCollapsedStates[keyB];
+        tcCollapsedStates[keyB] = tempC;
+        
+        markDirty();
         renderProblems();
     }
 
@@ -525,32 +553,52 @@ if ($setId) {
     }
 
     function renderTestCase(probIdx, tcIdx, tc) {
+        const key = probIdx + '-' + tcIdx;
+        const isCollapsed = !!tcCollapsedStates[key];
+        const tcsLength = problems[probIdx].testcases.length;
+        
         return `
-        <div class="tc-container-box mb-2" style="background:var(--cq-bg-card); border:1px solid var(--cq-border); padding:8px 12px; border-radius:6px;">
-            <div class="tc-row" id="tc-${probIdx}-${tcIdx}" style="margin-bottom:0;">
-                <div class="flex-fill">
-                    <label class="form-label" style="font-size:0.75rem;">Input</label>
-                    <textarea class="form-control tc-auto-resize" onchange="problems[${probIdx}].testcases[${tcIdx}].input_data=this.value" oninput="autoResize(this)" placeholder="Input data">${escHtml(tc.input_data || '')}</textarea>
+        <div class="problem-item mb-2" id="tc-box-${probIdx}-${tcIdx}" style="padding: 0; background: var(--cq-bg-card); border-radius: 6px;">
+            <div class="problem-header" onclick="toggleTestCase(${probIdx}, ${tcIdx})" style="padding: 8px 12px; border-bottom: ${isCollapsed ? 'none' : '1px solid var(--cq-border)'}; background: transparent; cursor: pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="collapse-icon ${isCollapsed ? 'collapsed' : ''}" id="tc-collapse-icon-${probIdx}-${tcIdx}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </span>
+                    <span style="font-size: 0.85rem; font-weight: 600;">Test Case #${tcIdx + 1} ${tc.is_sample ? '<span class="badge bg-cq-secondary ms-1" style="font-size:0.6rem;">Sample</span>' : ''}</span>
                 </div>
-                <div class="flex-fill">
-                    <label class="form-label" style="font-size:0.75rem;">Expected Output</label>
-                    <textarea class="form-control tc-auto-resize" onchange="problems[${probIdx}].testcases[${tcIdx}].expected_output=this.value" oninput="autoResize(this)" placeholder="Expected output">${escHtml(tc.expected_output || '')}</textarea>
-                </div>
-                <div style="padding-top:24px;">
-                    <div class="form-check" title="แสดงเป็นตัวอย่าง">
-                        <input class="form-check-input" type="checkbox" id="sample-chk-${probIdx}-${tcIdx}" ${tc.is_sample ? 'checked' : ''} onchange="markDirty(); problems[${probIdx}].testcases[${tcIdx}].is_sample=this.checked?1:0; document.getElementById('hover-map-container-${probIdx}-${tcIdx}').style.display = this.checked ? 'block' : 'none';">
-                        <label class="form-label" style="font-size:0.7rem;" for="sample-chk-${probIdx}-${tcIdx}">Sample</label>
-                    </div>
-                </div>
-                <div style="padding-top:24px;">
-                    <button class="btn btn-sm" style="color:var(--cq-danger);" onclick="removeTestCase(${probIdx},${tcIdx})">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <div class="d-flex gap-1" onclick="event.stopPropagation()">
+                    <button class="btn btn-sm btn-cq-secondary" onclick="moveTestCase(${probIdx}, ${tcIdx}, -1)" ${tcIdx === 0 ? 'disabled' : ''} title="เลื่อนขึ้น" style="padding:2px 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                    <button class="btn btn-sm btn-cq-secondary" onclick="moveTestCase(${probIdx}, ${tcIdx}, 1)" ${tcIdx === tcsLength - 1 ? 'disabled' : ''} title="เลื่อนลง" style="padding:2px 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <button class="btn btn-sm" style="color:var(--cq-danger); border: 1px solid var(--cq-border); padding:2px 4px;" onclick="removeTestCase(${probIdx}, ${tcIdx})" title="ลบ Test Case">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                 </div>
             </div>
-            <div id="hover-map-container-${probIdx}-${tcIdx}" style="display: ${tc.is_sample ? 'block' : 'none'}; margin-top:8px; padding-top:8px; border-top:1px dashed var(--cq-border);">
-                <label class="form-label" style="font-size:0.7rem; color:var(--cq-text-muted);">การเชื่อมโยงบรรทัดไฮไลท์ (Hover Mapping) - <i>(เฉพาะโจทย์ที่มีหลายบรรทัด)</i></label>
-                <input type="text" class="form-control form-control-sm" style="font-family:'JetBrains Mono',monospace; font-size:0.75rem;" placeholder="เช่น 1:1, 2-3:2 (เว้นว่างไว้ให้ระบบซิงค์ 1:1 อัตโนมัติ)" value="${escHtml(tc.hover_mapping || '')}" onchange="problems[${probIdx}].testcases[${tcIdx}].hover_mapping=this.value">
+            <div class="problem-body ${isCollapsed ? 'collapsed' : ''}" id="tc-body-${probIdx}-${tcIdx}" style="padding: 12px; background: transparent;">
+                <div class="tc-row" style="margin-bottom:0;">
+                    <div class="flex-fill">
+                        <label class="form-label" style="font-size:0.75rem;">Input</label>
+                        <textarea class="form-control tc-auto-resize" onchange="problems[${probIdx}].testcases[${tcIdx}].input_data=this.value" oninput="autoResize(this)" placeholder="Input data">${escHtml(tc.input_data || '')}</textarea>
+                    </div>
+                    <div class="flex-fill">
+                        <label class="form-label" style="font-size:0.75rem;">Expected Output</label>
+                        <textarea class="form-control tc-auto-resize" onchange="problems[${probIdx}].testcases[${tcIdx}].expected_output=this.value" oninput="autoResize(this)" placeholder="Expected output">${escHtml(tc.expected_output || '')}</textarea>
+                    </div>
+                    <div style="padding-top:24px;">
+                        <div class="form-check" title="แสดงเป็นตัวอย่าง">
+                            <input class="form-check-input" type="checkbox" id="sample-chk-${probIdx}-${tcIdx}" ${tc.is_sample ? 'checked' : ''} onchange="markDirty(); problems[${probIdx}].testcases[${tcIdx}].is_sample=this.checked?1:0; document.getElementById('hover-map-container-${probIdx}-${tcIdx}').style.display = this.checked ? 'block' : 'none'; renderProblems();">
+                            <label class="form-label" style="font-size:0.7rem;" for="sample-chk-${probIdx}-${tcIdx}">Sample</label>
+                        </div>
+                    </div>
+                </div>
+                <div id="hover-map-container-${probIdx}-${tcIdx}" style="display: ${tc.is_sample ? 'block' : 'none'}; margin-top:8px; padding-top:8px; border-top:1px dashed var(--cq-border);">
+                    <label class="form-label" style="font-size:0.7rem; color:var(--cq-text-muted);">การเชื่อมโยงบรรทัดไฮไลท์ (Hover Mapping) - <i>(เฉพาะโจทย์ที่มีหลายบรรทัด)</i></label>
+                    <input type="text" class="form-control form-control-sm" style="font-family:'JetBrains Mono',monospace; font-size:0.75rem;" placeholder="เช่น 1:1, 2-3:2 (เว้นว่างไว้ให้ระบบซิงค์ 1:1 อัตโนมัติ)" value="${escHtml(tc.hover_mapping || '')}" onchange="problems[${probIdx}].testcases[${tcIdx}].hover_mapping=this.value">
+                </div>
             </div>
         </div>`;
     }

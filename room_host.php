@@ -349,6 +349,9 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
                         case 'room_ended':
                             window.location.reload();
                             break;
+                        case 'cheat_flag':
+                            showCheatWarning(data.display_name || data.username, data.flag_type, data.details);
+                            break;
                     }
                 } catch (e) {
                     console.error('[Room WS] Parse error:', e);
@@ -502,6 +505,42 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
             // Redirect to download
             const params = new URLSearchParams({ room_id: roomId, columns: cols.join(',') });
             window.location.href = 'api/export_api.php?' + params.toString();
+        }
+
+        function showCheatWarning(name, flagType, details) {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'position-fixed bottom-0 end-0 p-3';
+                container.style.zIndex = '1100';
+                document.body.appendChild(container);
+            }
+            
+            const typeText = flagType === 'tab_switch' ? 'เปลี่ยนแท็บ/ย่อจอ' : (flagType === 'copy_paste' ? 'คัดลอก/วางข้อความ' : flagType);
+            
+            const toastEl = document.createElement('div');
+            toastEl.className = 'toast align-items-center text-bg-danger border-0 mb-2 shadow';
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+            toastEl.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body" style="font-size:0.9rem;">
+                        <strong>⚠️ พบพฤติกรรมน่าสงสัย:</strong> ${escapeHtml(name)} <br>
+                        <small>${escapeHtml(typeText)}</small>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            `;
+            container.appendChild(toastEl);
+            const toast = new bootstrap.Toast(toastEl, { delay: 10000 });
+            toast.show();
+            
+            // Remove after hidden
+            toastEl.addEventListener('hidden.bs.toast', () => {
+                toastEl.remove();
+            });
         }
     </script>
 </body>

@@ -292,6 +292,33 @@ switch ($action) {
         jsonResponse(['status' => $room['status']]);
         break;
 
+    case 'cheat_flag':
+        $roomId = intval($input['room_id'] ?? 0);
+        $flagType = $input['flag_type'] ?? '';
+        $details = $input['details'] ?? '';
+        
+        $chk = $pdo->prepare("SELECT `participant_id` FROM `cq_participants` WHERE `room_id` = ? AND `user_id` = ?");
+        $chk->execute([$roomId, $user['user_id']]);
+        $part = $chk->fetch();
+        
+        if ($part && in_array($flagType, ['tab_switch', 'fullscreen_exit', 'copy_paste', 'idle'])) {
+            $stmt = $pdo->prepare("INSERT INTO `cq_flags` (`room_id`, `participant_id`, `flag_type`, `details`) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$roomId, $part['participant_id'], $flagType, $details]);
+            
+            // Notify host via websocket
+            pushRoomEvent($pdo, $roomId, 'cheat_flag', [
+                'user_id' => $user['user_id'],
+                'username' => $user['username'],
+                'display_name' => $user['display_name'],
+                'flag_type' => $flagType,
+                'details' => $details
+            ]);
+            jsonResponse(['success' => true]);
+        } else {
+            jsonResponse(['error' => 'Invalid flag or participant'], 400);
+        }
+        break;
+
     default:
         jsonResponse(['error' => 'Invalid action'], 400);
 }

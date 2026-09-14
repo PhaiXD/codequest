@@ -657,7 +657,32 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
                 btn.disabled = false;
                 btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Submit';
             }
+        } // Ensure submitCode function is closed
+
+        // Anti-cheat mechanisms
+        let lastFlagTime = 0;
+        function sendCheatFlag(flagType, details = '') {
+            const now = Date.now();
+            if (now - lastFlagTime < 5000) return; // limit to 1 per 5s
+            lastFlagTime = now;
+            
+            fetch('api/room_api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'cheat_flag', room_id: roomId, flag_type: flagType, details: details })
+            });
         }
+        
+        // Listen for tab switch (visibility change)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                sendCheatFlag('tab_switch', 'ผู้เข้าสอบเปลี่ยนแท็บหรือย่อหน้าต่าง');
+            }
+        });
+        
+        // Detect copy/paste
+        document.addEventListener('copy', () => sendCheatFlag('copy_paste', 'มีการคัดลอกข้อความ'));
+        document.addEventListener('paste', () => sendCheatFlag('copy_paste', 'มีการวางข้อความ'));
     </script>
 </body>
 </html>
