@@ -278,6 +278,15 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
         const pinCode = '<?= $room['pin_code'] ?>';
         const joinUrl = '<?= $joinUrl ?>';
 
+        function escapeHtml(unsafe) {
+            return (unsafe || '').toString()
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         // Generate QR Code
         document.addEventListener('DOMContentLoaded', () => {
             const qrEl = document.getElementById('qrcode');
@@ -304,72 +313,51 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
         }
 
         // =============================================
-        // WebSocket Real-Time Connection
+        // Polling Room Events
         // =============================================
-        const ROOM_WS_URL = '<?= str_replace("https://", "wss://", GRADER_URL) ?>/ws/room?id=<?= $roomId ?>&key=<?= GRADER_SECRET ?>&role=host&userId=<?= $user['user_id'] ?>';
-        let roomWs = null;
-        let wsReconnectTimer = null;
-
-        function connectRoomWs() {
-            if (roomWs && roomWs.readyState === WebSocket.OPEN) return;
-
-            roomWs = new WebSocket(ROOM_WS_URL);
-
-            roomWs.onopen = () => {
-                console.log('[Room WS] Connected');
-                // Keep alive ping every 25 seconds
-                if (wsReconnectTimer) clearInterval(wsReconnectTimer);
-                wsReconnectTimer = setInterval(() => {
-                    if (roomWs && roomWs.readyState === WebSocket.OPEN) {
-                        roomWs.send(JSON.stringify({ type: 'ping' }));
+        let lastEventId = <?= $startEventId ?>;
+        
+        async function pollRoomEvents() {
+            try {
+                const res = await fetch(`api/room_poll.php?room_id=${roomId}&last_event_id=${lastEventId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.events && data.events.length > 0) {
+                        for (const ev of data.events) {
+                            lastEventId = Math.max(lastEventId, ev.event_id);
+                            const eventType = ev.event_type;
+                            const evData = ev.event_data;
+                            
+                            switch (eventType) {
+                                case 'participant_joined':
+                                    addParticipant(evData);
+                                    break;
+                                case 'participant_kicked':
+                                    removeParticipant(evData.user_id);
+                                    break;
+                                case 'submission_update':
+                                    updateScore(evData.user_id, evData.new_total_score);
+                                    break;
+                                case 'room_started':
+                                    window.location.reload();
+                                    break;
+                                case 'room_ended':
+                                    window.location.reload();
+                                    break;
+                                case 'cheat_flag':
+                                    showCheatWarning(evData);
+                                    break;
+                            }
+                        }
                     }
-                }, 25000);
-            };
-
-            roomWs.onmessage = (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    if (msg.type !== 'room_event') return;
-
-                    const { event: eventType, data } = msg;
-
-                    switch (eventType) {
-                        case 'participant_joined':
-                            addParticipant(data);
-                            break;
-                        case 'participant_kicked':
-                            removeParticipant(data.user_id);
-                            break;
-                        case 'submission_update':
-                            updateScore(data.user_id, data.new_total_score);
-                            break;
-                        case 'room_started':
-                            window.location.reload();
-                            break;
-                        case 'room_ended':
-                            window.location.reload();
-                            break;
-                        case 'cheat_flag':
-                            showCheatWarning(data.display_name || data.username, data.flag_type, data.details);
-                            break;
-                    }
-                } catch (e) {
-                    console.error('[Room WS] Parse error:', e);
                 }
-            };
-
-            roomWs.onerror = (err) => {
-                console.error('[Room WS] Error');
-            };
-
-            roomWs.onclose = () => {
-                console.log('[Room WS] Disconnected, reconnecting in 2s...');
-                if (wsReconnectTimer) clearInterval(wsReconnectTimer);
-                setTimeout(connectRoomWs, 2000);
-            };
+            } catch (e) {
+                console.error('Polling error:', e);
+            }
         }
-
-        connectRoomWs();
+        
+        // Poll every 2 seconds
+        setInterval(pollRoomEvents, 2000);
 
         function addParticipant(user) {
             const container = document.getElementById('participants-container');
@@ -507,7 +495,7 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
             window.location.href = 'api/export_api.php?' + params.toString();
         }
 
-        function showCheatWarning(name, flagType, details) {
+        function showCheatWarning(data) {
             let container = document.getElementById('toast-container');
             if (!container) {
                 container = document.createElement('div');
@@ -517,7 +505,8 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
                 document.body.appendChild(container);
             }
             
-            const typeText = flagType === 'tab_switch' ? 'เปลี่ยนแท็บ/ย่อจอ' : (flagType === 'copy_paste' ? 'คัดลอก/วางข้อความ' : flagType);
+            const name = data.display_name || data.username;
+            const typeText = data.flag_type === 'tab_switch' ? 'เปลี่ยนแท็บ/ย่อจอ/เปลี่ยนหน้าต่าง' : (data.flag_type === 'copy_paste' ? 'คัดลอก/วางข้อความ' : data.flag_type);
             
             const toastEl = document.createElement('div');
             toastEl.className = 'toast align-items-center text-bg-danger border-0 mb-2 shadow';
@@ -537,6 +526,31 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
             const toast = new bootstrap.Toast(toastEl, { delay: 10000 });
             toast.show();
             
+            // Highlight the user in the participant list
+            if (data.user_id) {
+                const card = document.getElementById('participant-' + data.user_id);
+                if (card) {
+                    card.style.border = '2px solid var(--cq-danger)';
+                    card.style.boxShadow = '0 0 10px rgba(255, 71, 87, 0.5)';
+                    
+                    // Keep the border for a few seconds, then we can let it revert, or keep it as a permanent warning sign
+                    setTimeout(() => { 
+                        card.style.border = ''; 
+                        card.style.boxShadow = '';
+                        // But maybe add a permanent small warning icon if not exists
+                        if (!card.querySelector('.cheat-indicator')) {
+                            const wrapper = card.querySelector('.d-flex.align-items-center.gap-2');
+                            if (wrapper) {
+                                const warnIcon = document.createElement('div');
+                                warnIcon.className = 'cheat-indicator ms-auto';
+                                warnIcon.innerHTML = `<span class="badge bg-danger" title="พบพฤติกรรมน่าสงสัย">⚠️ </span>`;
+                                wrapper.appendChild(warnIcon);
+                            }
+                        }
+                    }, 5000);
+                }
+            }
+
             // Remove after hidden
             toastEl.addEventListener('hidden.bs.toast', () => {
                 toastEl.remove();

@@ -71,8 +71,8 @@ foreach ($leaderboard as $idx => $p) {
         .rank-3 .rank-number { color: #CD7F32; text-shadow: 0 0 10px rgba(205, 127, 50, 0.5); font-size: 1.6rem; }
         .rank-score { font-size: 1.5rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--cq-warning); margin-left: auto; }
         
-        .confetti { position: absolute; width: 10px; height: 10px; background-color: #f00; animation: fall 3s linear infinite; }
-        @keyframes fall { to { transform: translateY(100vh) rotate(720deg); } }
+        .confetti { position: fixed; top: -10px; width: 10px; height: 10px; background-color: #f00; animation: fall 3s linear infinite; pointer-events: none; z-index: 9999; }
+        @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
 
         @media (max-width: 576px) {
             .rank-card { padding: 12px; }
@@ -181,11 +181,12 @@ foreach ($leaderboard as $idx => $p) {
     <?php if ($room['status'] === 'ended' && ($myRank <= 3 && $myRank > 0)): ?>
     <script>
         // Simple confetti effect for top 3
+        document.body.style.overflowX = 'hidden';
         const colors = ['#00D4AA', '#7B61FF', '#FFD700', '#FF4444'];
         for (let i = 0; i < 50; i++) {
             const confetti = document.createElement('div');
             confetti.classList.add('confetti');
-            confetti.style.left = Math.random() * 100 + 'vw';
+            confetti.style.left = (Math.random() * 95) + 'vw'; // max 95vw to prevent scrollbar
             confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
             confetti.style.animationDuration = (Math.random() * 3 + 2) + 's';
             confetti.style.animationDelay = Math.random() * 2 + 's';

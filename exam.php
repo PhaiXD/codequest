@@ -291,14 +291,53 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
         const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
 
         // Timer Logic
+        function triggerTimeout() {
+            const timeSpan = document.getElementById('timer');
+            if (timeSpan) timeSpan.textContent = '00:00:00';
+            const btn = document.getElementById('btn-submit');
+            if (btn) btn.disabled = true;
+            
+            let modalEl = document.getElementById('timeoutModal');
+            if (!modalEl) {
+                const modalHtml = `
+                <div class="modal fade" id="timeoutModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-warning text-dark">
+                                <h5 class="modal-title">⏱ หมดเวลาสอบแล้ว</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body text-center py-4">
+                                <p class="mb-2">เวลาในการทำข้อสอบสิ้นสุดลงแล้ว</p>
+                                <p class="text-muted small mb-0">คุณจะไม่สามารถส่งคำตอบได้อีก แต่ยังสามารถดูโค้ดที่เขียนค้างไว้ได้</p>
+                            </div>
+                            <div class="modal-footer justify-content-center">
+                                <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">รับทราบ</button>
+                                <a href="room_student.php?id=${roomId}" class="btn btn-primary px-4">กลับหน้าหลัก</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                modalEl = document.getElementById('timeoutModal');
+            }
+            if(typeof bootstrap !== 'undefined') {
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            } else {
+                // fallback if bootstrap not loaded yet
+                setTimeout(() => {
+                    if(typeof bootstrap !== 'undefined') new bootstrap.Modal(modalEl).show();
+                }, 1000);
+            }
+        }
+
         if (timeRemaining > 0) {
-            const timeSpan = document.getElementById('timer-display') || document.querySelector('.badge.bg-dark');
+            const timeSpan = document.getElementById('timer') || document.querySelector('.badge.bg-dark');
             setInterval(() => {
                 timeRemaining--;
                 if (timeRemaining <= 0) {
-                    timeSpan.textContent = '00:00:00';
-                    alert('หมดเวลาสอบแล้ว!');
-                    window.location.href = 'room_student.php?id=' + roomId;
+                    triggerTimeout();
                 } else {
                     const h = Math.floor(timeRemaining / 3600).toString().padStart(2, '0');
                     const m = Math.floor((timeRemaining % 3600) / 60).toString().padStart(2, '0');
@@ -308,6 +347,8 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
                     }
                 }
             }, 1000);
+        } else if (timeRemaining === 0) {
+            triggerTimeout();
         }
 
         // Render ||text|| as spoiler blocks
@@ -661,17 +702,77 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
 
         // Anti-cheat mechanisms
         let lastFlagTime = 0;
+        
+        function showStudentWarningModal(details) {
+            let modalEl = document.getElementById('cheatWarningModal');
+            if (!modalEl) {
+                const modalHtml = `
+                <div class="modal fade" id="cheatWarningModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="border: 1px solid var(--cq-danger); overflow: hidden;">
+                            <div class="modal-header bg-danger text-white">
+                                <h5 class="modal-title">⚠️ แจ้งเตือนพฤติกรรมต้องสงสัย</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body text-center py-4">
+                                <p class="mb-2">ระบบตรวจพบพฤติกรรมที่อาจเข้าข่ายการทุจริต</p>
+                                <p class="fw-bold text-danger mb-3" id="cheatWarningDetails"></p>
+                                <p class="text-muted small mb-0">ระบบได้บันทึกและส่งข้อมูลแจ้งเตือนไปยังผู้คุมสอบเรียบร้อยแล้ว หากมีข้อผิดพลาดโปรดแจ้งผู้คุมสอบทันที</p>
+                            </div>
+                            <div class="modal-footer justify-content-center">
+                                <button type="button" class="btn btn-danger px-4" data-bs-dismiss="modal">รับทราบ</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                modalEl = document.getElementById('cheatWarningModal');
+            }
+            document.getElementById('cheatWarningDetails').textContent = '(' + details + ')';
+            const modal = new bootstrap.Modal(modalEl);
+            modal.show();
+        }
+
         function sendCheatFlag(flagType, details = '') {
             const now = Date.now();
             if (now - lastFlagTime < 5000) return; // limit to 1 per 5s
             lastFlagTime = now;
             
+            try {
+                showStudentWarningModal(details);
+            } catch(e) {
+                console.error("Modal error", e);
+            }
+
             fetch('api/room_api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                keepalive: true,
                 body: JSON.stringify({ action: 'cheat_flag', room_id: roomId, flag_type: flagType, details: details })
-            });
+            }).then(r => r.json()).then(d => console.log('Flag sent:', d)).catch(e => console.error(e));
         }
+
+        // Poll room events for 'room_ended'
+        let lastRoomEventId = 0;
+        async function pollRoomEvents() {
+            try {
+                const res = await fetch(`api/room_poll.php?room_id=${roomId}&last_event_id=${lastRoomEventId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.events && data.events.length > 0) {
+                        for (const ev of data.events) {
+                            lastRoomEventId = Math.max(lastRoomEventId, ev.event_id);
+                            if (ev.event_type === 'room_ended') {
+                                triggerTimeout();
+                                return;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+        setInterval(pollRoomEvents, 5000);
+        pollRoomEvents();
         
         // Listen for tab switch (visibility change)
         document.addEventListener('visibilitychange', () => {
@@ -680,9 +781,28 @@ $startEventId = intval($evStmt->fetchColumn() ?: 0);
             }
         });
         
+        // Listen for window blur (clicking outside the window)
+        window.addEventListener('blur', () => {
+            sendCheatFlag('tab_switch', 'ผู้เข้าสอบคลิกสลับหน้าต่างหรือใช้งานโปรแกรมอื่น');
+        });
+        
+        // Disable Right-Click (context menu) to prevent Google Lens etc.
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+        
         // Detect copy/paste
         document.addEventListener('copy', () => sendCheatFlag('copy_paste', 'มีการคัดลอกข้อความ'));
         document.addEventListener('paste', () => sendCheatFlag('copy_paste', 'มีการวางข้อความ'));
+
+        // Initialize Split.js
+        Split(['#left-pane', '#right-pane'], {
+            sizes: [50, 50],
+            minSize: 300,
+            gutterSize: 8,
+            cursor: 'col-resize'
+        });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
