@@ -82,10 +82,12 @@ switch ($action) {
             jsonResponse(['error' => 'Set ID required'], 400);
         }
         
-        // Verify ownership
-        $stmt = $pdo->prepare("SELECT * FROM `cq_problem_sets` WHERE `set_id` = ? AND `owner_id` = ?");
-        $stmt->execute([$setId, $user['user_id']]);
-        if (!$stmt->fetch()) {
+        // Verify ownership (or admin)
+        $stmt = $pdo->prepare("SELECT * FROM `cq_problem_sets` WHERE `set_id` = ?");
+        $stmt->execute([$setId]);
+        $set = $stmt->fetch();
+        
+        if (!$set || ($set['owner_id'] !== $user['user_id'] && $user['role'] !== 'admin')) {
             jsonResponse(['error' => 'Not found or no permission'], 403);
         }
         

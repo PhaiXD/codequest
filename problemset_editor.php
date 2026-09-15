@@ -10,11 +10,11 @@ $problems = [];
 
 // Load existing set if editing
 if ($setId) {
-    $stmt = $pdo->prepare("SELECT * FROM `cq_problem_sets` WHERE `set_id` = ? AND `owner_id` = ?");
-    $stmt->execute([$setId, $user['user_id']]);
+    $stmt = $pdo->prepare("SELECT * FROM `cq_problem_sets` WHERE `set_id` = ?");
+    $stmt->execute([$setId]);
     $problemSet = $stmt->fetch();
     
-    if (!$problemSet) {
+    if (!$problemSet || ($problemSet['owner_id'] !== $user['user_id'] && $user['role'] !== 'admin')) {
         header('Location: dashboard.php');
         exit;
     }

@@ -112,8 +112,9 @@ $users = $pdo->query("
 
         <!-- User Management -->
         <div class="cq-card p-0 animate-fadeInUp" style="animation-delay: 0.2s;">
-            <div class="p-4 border-bottom" style="border-color:var(--cq-border) !important;">
+            <div class="p-4 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-3" style="border-color:var(--cq-border) !important;">
                 <h5 class="fw-bold mb-0">ผู้ใช้งานระบบ (User Management)</h5>
+                <input type="text" id="userSearchInput" class="form-control" style="max-width: 300px;" placeholder="ค้นหาชื่อผู้ใช้...">
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
@@ -199,5 +200,24 @@ $users = $pdo->query("
 
     <?php include 'includes/footer.php'; ?>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('userSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const term = this.value.toLowerCase();
+                    const rows = document.querySelectorAll('table tbody tr');
+                    rows.forEach(row => {
+                        // The user's name and username are in the first td (.ps-4)
+                        const userCell = row.querySelector('td.ps-4');
+                        if (userCell) {
+                            const text = userCell.textContent.toLowerCase();
+                            row.style.display = text.includes(term) ? '' : 'none';
+                        }
+                    });
+                });
+            }
+        });
+    </script>
 </body>
 </html>
