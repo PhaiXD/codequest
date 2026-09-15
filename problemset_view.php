@@ -13,25 +13,14 @@ if (!$setId) {
 }
 
 // Fetch problem set details
-if ($user['role'] === 'admin') {
-    $stmt = $pdo->prepare("
-        SELECT ps.*, u.username, u.display_name,
-               (SELECT COUNT(*) FROM `cq_problems` WHERE `set_id` = ps.`set_id`) as problem_count
-        FROM `cq_problem_sets` ps 
-        JOIN `cq_users` u ON ps.`owner_id` = u.`user_id` 
-        WHERE ps.`set_id` = ?
-    ");
-    $stmt->execute([$setId]);
-} else {
-    $stmt = $pdo->prepare("
-        SELECT ps.*, u.username, u.display_name,
-               (SELECT COUNT(*) FROM `cq_problems` WHERE `set_id` = ps.`set_id`) as problem_count
-        FROM `cq_problem_sets` ps 
-        JOIN `cq_users` u ON ps.`owner_id` = u.`user_id` 
-        WHERE ps.`set_id` = ? AND (ps.`visibility` = 'public' OR ps.`owner_id` = ?)
-    ");
-    $stmt->execute([$setId, $user['user_id']]);
-}
+$stmt = $pdo->prepare("
+    SELECT ps.*, u.username, u.display_name,
+           (SELECT COUNT(*) FROM `cq_problems` WHERE `set_id` = ps.`set_id`) as problem_count
+    FROM `cq_problem_sets` ps 
+    JOIN `cq_users` u ON ps.`owner_id` = u.`user_id` 
+    WHERE ps.`set_id` = ? AND (ps.`visibility` = 'public' OR ps.`owner_id` = ? OR ? = 'admin')
+");
+$stmt->execute([$setId, $user['user_id'], $user['role']]);
 $set = $stmt->fetch();
 
 if (!$set) {
@@ -39,7 +28,8 @@ if (!$set) {
     exit;
 }
 
-$isOwner = ($set['owner_id'] === $user['user_id'] || $user['role'] === 'admin');
+$isOwner = ($set['owner_id'] === $user['user_id']);
+$isAdmin = ($user['role'] === 'admin');
 
 // Fetch problems with stats
 $pStmt = $pdo->prepare("
@@ -126,6 +116,10 @@ if ($isOwner) {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 แก้ไขชุดโจทย์
                             </a>
+                            <button class="btn btn-cq-danger w-100 mt-2" onclick="deleteProblemSet()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                ลบชุดโจทย์นี้
+                            </button>
                         <?php else: ?>
                             <!-- Player Actions -->
                             <a href="practice.php?set_id=<?= $setId ?>" class="btn btn-cq-primary w-100">
@@ -136,6 +130,16 @@ if ($isOwner) {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><path d="M12 12v3"/></svg>
                                 Fork ชุดโจทย์นี้
                             </button>
+                            <?php if ($isAdmin): ?>
+                                <a href="problemset_editor.php?id=<?= $setId ?>" class="btn btn-cq-outline w-100 mt-2">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    แก้ไขชุดโจทย์ (Admin)
+                                </a>
+                                <button class="btn btn-cq-danger w-100 mt-2" onclick="deleteProblemSet()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="me-1"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                    ลบชุดโจทย์นี้ (Admin)
+                                </button>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -382,7 +386,7 @@ if ($isOwner) {
                     bootstrap.Modal.getInstance(document.getElementById('forkModal')).hide();
                     window.location.href = 'problemset_editor.php?id=' + data.set_id;
                 } else {
-                    alert(data.error || 'เกิดข้อผิดพลาดในการ Fork');
+                    alert(data.error || 'ไม่สามารถ Fork ได้');
                     btn.disabled = false;
                     btn.innerHTML = oldHtml;
                 }
@@ -390,6 +394,28 @@ if ($isOwner) {
                 alert('Network error');
                 btn.disabled = false;
                 btn.innerHTML = oldHtml;
+            }
+        }
+
+        function deleteProblemSet() {
+            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบชุดโจทย์นี้?\n\nคำเตือน: ข้อมูลโจทย์ กรณีทดสอบ และประวัติการส่งโค้ดทั้งหมดที่เกี่ยวข้องจะถูกลบและไม่สามารถกู้คืนได้!')) {
+                fetch('api/problemset_api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete_set', set_id: <?= $setId ?> })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = 'dashboard.php';
+                    } else {
+                        alert('เกิดข้อผิดพลาด: ' + (data.error || 'ไม่ทราบสาเหตุ'));
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+                });
             }
         }
     </script>
